@@ -16,9 +16,11 @@ module.exports = {
     },
     networks: {
         hardhat: {
-            forking: {
-                url: process.env.MAINNET_URL || "",
-            },
+            // Forking disabled for local development
+            // Uncomment below to enable mainnet forking
+            // forking: {
+            //     url: process.env.MAINNET_URL || "https://eth.public-rpc.com",
+            // },
         },
         localhost: {
             url: "http://127.0.0.1:8545"

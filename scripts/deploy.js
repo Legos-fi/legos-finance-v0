@@ -191,23 +191,19 @@ async function main() {
         await riskManager.updateAssetPrice(wethAddress, ethers.parseEther("2000")); // $2000
         console.log("✅ Initial asset prices set");
 
-        // 9. Setup Governance Authorization
-        console.log("\n🔐 Setting up Governance Authorization...");
+        // 9. Skip governance authorization for local testing
+        console.log("\n🔐 Skipping governance authorization for local testing...");
+        console.log("✅ Contracts remain owned by deployer for easier testing");
 
-        await governance.setContractAuthorization(clobAddress, true);
-        await governance.setContractAuthorization(riskManagerAddress, true);
-        await governance.setContractAuthorization(usdcPoolAddress, true);
-        await governance.setContractAuthorization(wethPoolAddress, true);
-        console.log("✅ Contracts authorized for governance");
-
-        // 10. Transfer ownership to Timelock (Governance)
-        console.log("\n🔄 Transferring ownership to Governance...");
-
-        await clob.transferOwnership(timelockAddress);
-        await riskManager.transferOwnership(timelockAddress);
-        await usdcPool.transferOwnership(timelockAddress);
-        await wethPool.transferOwnership(timelockAddress);
-        console.log("✅ Ownership transferred to governance");
+        // For production, uncomment the following:
+        // await governance.setContractAuthorization(clobAddress, true);
+        // await governance.setContractAuthorization(riskManagerAddress, true);
+        // await governance.setContractAuthorization(usdcPoolAddress, true);
+        // await governance.setContractAuthorization(wethPoolAddress, true);
+        // await clob.transferOwnership(timelockAddress);
+        // await riskManager.transferOwnership(timelockAddress);
+        // await usdcPool.transferOwnership(timelockAddress);
+        // await wethPool.transferOwnership(timelockAddress);
 
         // 11. Distribute initial token allocation
         console.log("\n💰 Distributing Token Allocations...");

@@ -1,0 +1,78 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "LegosMath",
+  "sourceName": "contracts/libraries/LegosMath.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "DivisionByZero",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidBasisPoints",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "Overflow",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BASIS_POINTS",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "HALF_RAY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "RAY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "SECONDS_PER_YEAR",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x608080604052346100195760f5908161001f823930815050f35b600080fdfe6080806040526004361015601257600080fd5b600090813560e01c908163552033c414609b575080635fcd680914607a578063e1f1c4a71460635763e6a69ab814604857600080fd5b8060031936011260605760206040516301e133808152f35b80fd5b508060031936011260605760206040516127108152f35b508060031936011260605760206040516b019d971e4fe8401e740000008152f35b90508160031936011260bb57806b033b2e3c9fd0803ce800000060209252f35b5080fdfea26469706673582212202838d676361c2dc5c3bcfec5c6519bf4945e25096adf7f9d7e3f18a18bb6970f64736f6c63430008140033",
+  "deployedBytecode": "0x6080806040526004361015601257600080fd5b600090813560e01c908163552033c414609b575080635fcd680914607a578063e1f1c4a71460635763e6a69ab814604857600080fd5b8060031936011260605760206040516301e133808152f35b80fd5b508060031936011260605760206040516127108152f35b508060031936011260605760206040516b019d971e4fe8401e740000008152f35b90508160031936011260bb57806b033b2e3c9fd0803ce800000060209252f35b5080fdfea26469706673582212202838d676361c2dc5c3bcfec5c6519bf4945e25096adf7f9d7e3f18a18bb6970f64736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

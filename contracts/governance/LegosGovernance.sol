@@ -475,7 +475,7 @@ contract LegosGovernance is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(Governor, GovernorTimelockControl)
+        override(Governor)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);

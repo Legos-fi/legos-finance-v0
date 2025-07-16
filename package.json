@@ -23,7 +23,8 @@
     "setup": "npm install && npm run frontend:install && npm run compile",
     "setup:force": "npm install --legacy-peer-deps && npm run frontend:install && npm run compile",
     "clean:all": "rm -rf node_modules frontend/node_modules package-lock.json frontend/package-lock.json && npm cache clean --force",
-    "start:all": "concurrently \"npm run node\" \"sleep 5 && npm run deploy:local\" \"sleep 10 && npm run frontend:start\""
+    "start:all": "concurrently \"npm run node\" \"sleep 5 && npm run deploy:local\" \"sleep 10 && npm run frontend:start\"",
+    "start:local": "node scripts/setup-local.js"
   },
   "keywords": [
     "defi",
@@ -37,19 +38,27 @@
   "author": "Legos Finance Team",
   "license": "MIT",
   "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.9",
+    "@nomicfoundation/hardhat-ethers": "^3.0.9",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.13",
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@nomicfoundation/hardhat-verify": "^2.0.0",
     "@openzeppelin/hardhat-upgrades": "^3.0.0",
-    "hardhat": "^2.19.0",
-    "hardhat-gas-reporter": "^1.0.9",
-    "hardhat-contract-sizer": "^2.10.0",
-    "solidity-coverage": "^0.8.5",
-    "solhint": "^4.0.0",
-    "chai": "^4.3.7",
-    "ethers": "^6.0.0",
+    "@typechain/ethers-v6": "^0.5.1",
+    "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^4.3.0",
     "@types/mocha": "^10.0.0",
-    "concurrently": "^8.2.0"
+    "chai": "^4.3.7",
+    "concurrently": "^8.2.0",
+    "ethers": "^6.0.0",
+    "hardhat": "^2.19.0",
+    "hardhat-contract-sizer": "^2.10.0",
+    "hardhat-gas-reporter": "^1.0.9",
+    "solhint": "^4.0.0",
+    "solidity-coverage": "^0.8.5",
+    "ts-node": "^10.9.2",
+    "typechain": "^8.3.2",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.0",
@@ -68,4 +77,4 @@
     "url": "https://github.com/legos-finance/legos-protocol/issues"
   },
   "homepage": "https://legos.finance"
-} 
+}
