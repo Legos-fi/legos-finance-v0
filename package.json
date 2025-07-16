@@ -1,0 +1,71 @@
+{
+  "name": "legos-finance",
+  "version": "1.0.0",
+  "description": "Legos Finance: Modular, Capital-Efficient Lending Protocol",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:coverage": "hardhat coverage",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy:mainnet": "hardhat run scripts/deploy.js --network mainnet",
+    "node": "hardhat node",
+    "verify": "hardhat verify",
+    "clean": "hardhat clean",
+    "size": "hardhat size-contracts",
+    "lint": "solhint 'contracts/**/*.sol'",
+    "lint:fix": "solhint 'contracts/**/*.sol' --fix",
+    "frontend:install": "cd frontend && npm install --legacy-peer-deps",
+    "frontend:start": "cd frontend && npm start",
+    "frontend:build": "cd frontend && npm run build",
+    "dev": "concurrently \"npm run node\" \"npm run frontend:start\"",
+    "setup": "npm install && npm run frontend:install && npm run compile",
+    "setup:force": "npm install --legacy-peer-deps && npm run frontend:install && npm run compile",
+    "clean:all": "rm -rf node_modules frontend/node_modules package-lock.json frontend/package-lock.json && npm cache clean --force",
+    "start:all": "concurrently \"npm run node\" \"sleep 5 && npm run deploy:local\" \"sleep 10 && npm run frontend:start\""
+  },
+  "keywords": [
+    "defi",
+    "lending",
+    "ethereum",
+    "solidity",
+    "modular",
+    "clob",
+    "governance"
+  ],
+  "author": "Legos Finance Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@openzeppelin/hardhat-upgrades": "^3.0.0",
+    "hardhat": "^2.19.0",
+    "hardhat-gas-reporter": "^1.0.9",
+    "hardhat-contract-sizer": "^2.10.0",
+    "solidity-coverage": "^0.8.5",
+    "solhint": "^4.0.0",
+    "chai": "^4.3.7",
+    "ethers": "^6.0.0",
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^10.0.0",
+    "concurrently": "^8.2.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "@openzeppelin/contracts-upgradeable": "^5.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/legos-finance/legos-protocol"
+  },
+  "bugs": {
+    "url": "https://github.com/legos-finance/legos-protocol/issues"
+  },
+  "homepage": "https://legos.finance"
+} 
