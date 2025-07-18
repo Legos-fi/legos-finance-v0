@@ -1,0 +1,14 @@
+{
+  "network": "riseTestnet",
+  "chainId": 11155931,
+  "timestamp": "2025-07-18T15:46:16.036Z",
+  "deployer": "0x94cbe63797DF13e1572B6A4bEfee714FA35f580f",
+  "contracts": {
+    "legosToken": "0x3B5be03846B3fAEd8C3D31a320877107d59b7ec3",
+    "timelock": "0xA2a5A7286eCc5B590A5c5869D9af24CaF23F364F",
+    "governance": "0x841e33B460fc362327e3392D7F5772cd63BFB905",
+    "clob": "0x23C7dd9b96F3d5007c014853d91CF766D07Ced95",
+    "riskManager": "0xB61efEfB4d34bcfB0B07403AEf9d3af059cb7582"
+  },
+  "blockNumber": 17764816
+}
