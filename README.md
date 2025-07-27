@@ -372,11 +372,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- **Website**: https://legos.finance
-- **Documentation**: https://docs.legos.finance
-- **Twitter**: [@legosfinance](https://twitter.com/legosfinance)
-- **Discord**: [Join our community](https://discord.gg/legosfinance)
-- **Blog**: https://blog.legos.finance
+- **Website**: https://legos.fi
+- **Documentation**: https://docs.legos.fi
+- **Twitter**: [@legosfi](https://twitter.com/legosfi)
+- **Discord**: [Join our community](https://discord.gg/legosfi)
+- **Blog**: https://blog.legos.fi
 
 ## ⚠️ Disclaimer
 
