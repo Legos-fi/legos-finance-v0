@@ -57,6 +57,8 @@ contract LegosCLOB is ILegosCore, Ownable, ReentrancyGuard {
     event OrderPartiallyFilled(uint256 indexed orderId, uint256 amountFilled, uint256 remaining);
     event LendingRateUpdated(address indexed asset, uint256 newRate);
     event BorrowingRateUpdated(address indexed asset, uint256 newRate);
+    event InstantExecution(uint256 indexed orderId, uint256 amount, uint256 rate);
+    event OrderBookDepthUpdated(address indexed asset, uint256 totalLendVolume, uint256 totalBorrowVolume);
     
     constructor(address initialOwner) Ownable(initialOwner) {}
     
@@ -107,8 +109,12 @@ contract LegosCLOB is ILegosCore, Ownable, ReentrancyGuard {
         
         emit OrderPlaced(orderId, msg.sender, OrderType.LEND, amount);
         
-        // Try to match immediately
-        _tryMatchOrder(orderId, asset);
+        // Try to match immediately for instant execution
+        uint256 matchedAmount = _tryMatchOrderInstant(orderId, asset);
+        
+        if (matchedAmount > 0) {
+            emit InstantExecution(orderId, matchedAmount, interestRate);
+        }
     }
     
     /**
@@ -160,8 +166,12 @@ contract LegosCLOB is ILegosCore, Ownable, ReentrancyGuard {
         
         emit OrderPlaced(orderId, msg.sender, OrderType.BORROW, amount);
         
-        // Try to match immediately
-        _tryMatchOrder(orderId, asset);
+        // Try to match immediately for instant execution
+        uint256 matchedAmount = _tryMatchOrderInstant(orderId, asset);
+        
+        if (matchedAmount > 0) {
+            emit InstantExecution(orderId, matchedAmount, interestRate);
+        }
     }
     
     /**
@@ -288,16 +298,272 @@ contract LegosCLOB is ILegosCore, Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev Internal function to try matching an order
+     * @dev Execute market order - instant execution at best available rate
+     * @param asset The asset to trade
+     * @param amount The amount to trade
+     * @param isLend Whether this is a lending (true) or borrowing (false) order
+     * @param maxSlippage Maximum slippage tolerance in basis points
+     * @param collateralToken Collateral token for borrow orders
+     * @param collateralAmount Collateral amount for borrow orders
+     * @return executedAmount Amount that was executed
+     * @return avgRate Average execution rate
      */
-    function _tryMatchOrder(uint256 orderId, address asset) internal {
+    function executeMarketOrder(
+        address asset,
+        uint256 amount,
+        bool isLend,
+        uint256 maxSlippage,
+        address collateralToken,
+        uint256 collateralAmount
+    ) external nonReentrant returns (uint256 executedAmount, uint256 avgRate) {
+        if (amount < MIN_ORDER_AMOUNT) revert InvalidAmount();
+        
+        if (isLend) {
+            // Transfer assets for lending
+            IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+            (executedAmount, avgRate) = _executeMarketLendOrder(asset, amount, maxSlippage);
+        } else {
+            // Validate and transfer collateral for borrowing
+            _validateCollateral(asset, amount, collateralToken, collateralAmount);
+            IERC20(collateralToken).safeTransferFrom(msg.sender, address(this), collateralAmount);
+            userCollateral[msg.sender][collateralToken] += collateralAmount;
+            (executedAmount, avgRate) = _executeMarketBorrowOrder(asset, amount, maxSlippage, collateralToken, collateralAmount);
+        }
+        
+        emit InstantExecution(0, executedAmount, avgRate); // orderId = 0 for market orders
+    }
+    
+    /**
+     * @dev Execute market lending order
+     */
+    function _executeMarketLendOrder(
+        address asset, 
+        uint256 amount, 
+        uint256 maxSlippage
+    ) internal returns (uint256 executedAmount, uint256 avgRate) {
+        uint256[] memory borrowRates = activeBorrowRates[asset];
+        _sortRatesDescending(borrowRates);
+        
+        uint256 remainingAmount = amount;
+        uint256 totalRate = 0;
+        uint256 totalExecuted = 0;
+        
+        for (uint256 i = 0; i < borrowRates.length && remainingAmount > 0; i++) {
+            uint256[] memory borrowOrderIds = borrowOrdersByRate[asset][borrowRates[i]];
+            
+            for (uint256 j = 0; j < borrowOrderIds.length && remainingAmount > 0; j++) {
+                Order storage borrowOrder = orders[borrowOrderIds[j]];
+                
+                if (borrowOrder.status == OrderStatus.PENDING || 
+                    borrowOrder.status == OrderStatus.PARTIALLY_FILLED) {
+                    
+                    uint256 matchAmount = remainingAmount < borrowOrder.remainingAmount 
+                        ? remainingAmount 
+                        : borrowOrder.remainingAmount;
+                    
+                    // Create temporary lend order for execution
+                    uint256 tempLendOrderId = _createTempLendOrder(msg.sender, asset, matchAmount, borrowRates[i]);
+                    _executeMatch(tempLendOrderId, borrowOrderIds[j], asset);
+                    
+                    totalRate += borrowRates[i] * matchAmount;
+                    totalExecuted += matchAmount;
+                    remainingAmount -= matchAmount;
+                }
+            }
+        }
+        
+        executedAmount = totalExecuted;
+        avgRate = totalExecuted > 0 ? totalRate / totalExecuted : 0;
+        
+        // Refund unexecuted amount
+        if (remainingAmount > 0) {
+            IERC20(asset).safeTransfer(msg.sender, remainingAmount);
+        }
+    }
+    
+    /**
+     * @dev Execute market borrowing order
+     */
+    function _executeMarketBorrowOrder(
+        address asset,
+        uint256 amount,
+        uint256 maxSlippage,
+        address collateralToken,
+        uint256 collateralAmount
+    ) internal returns (uint256 executedAmount, uint256 avgRate) {
+        uint256[] memory lendRates = activeLendRates[asset];
+        _sortRatesAscending(lendRates);
+        
+        uint256 remainingAmount = amount;
+        uint256 totalRate = 0;
+        uint256 totalExecuted = 0;
+        
+        for (uint256 i = 0; i < lendRates.length && remainingAmount > 0; i++) {
+            uint256[] memory lendOrderIds = lendOrdersByRate[asset][lendRates[i]];
+            
+            for (uint256 j = 0; j < lendOrderIds.length && remainingAmount > 0; j++) {
+                Order storage lendOrder = orders[lendOrderIds[j]];
+                
+                if (lendOrder.status == OrderStatus.PENDING || 
+                    lendOrder.status == OrderStatus.PARTIALLY_FILLED) {
+                    
+                    uint256 matchAmount = remainingAmount < lendOrder.remainingAmount 
+                        ? remainingAmount 
+                        : lendOrder.remainingAmount;
+                    
+                    // Calculate proportional collateral
+                    uint256 proportionalCollateral = (collateralAmount * matchAmount) / amount;
+                    
+                    // Create temporary borrow order for execution
+                    uint256 tempBorrowOrderId = _createTempBorrowOrder(
+                        msg.sender, asset, matchAmount, lendRates[i], 
+                        collateralToken, proportionalCollateral
+                    );
+                    _executeMatch(lendOrderIds[j], tempBorrowOrderId, asset);
+                    
+                    totalRate += lendRates[i] * matchAmount;
+                    totalExecuted += matchAmount;
+                    remainingAmount -= matchAmount;
+                }
+            }
+        }
+        
+        executedAmount = totalExecuted;
+        avgRate = totalExecuted > 0 ? totalRate / totalExecuted : 0;
+        
+        // Refund unused collateral
+        if (remainingAmount > 0) {
+            uint256 unusedCollateral = (collateralAmount * remainingAmount) / amount;
+            userCollateral[msg.sender][collateralToken] -= unusedCollateral;
+            IERC20(collateralToken).safeTransfer(msg.sender, unusedCollateral);
+        }
+    }
+    
+    /**
+     * @dev Create temporary lend order for market execution
+     */
+    function _createTempLendOrder(
+        address user,
+        address asset,
+        uint256 amount,
+        uint256 rate
+    ) internal returns (uint256 orderId) {
+        orderId = _nextOrderId++;
+        
+        orders[orderId] = Order({
+            orderId: orderId,
+            user: user,
+            orderType: OrderType.LEND,
+            status: OrderStatus.PENDING,
+            principalAmount: amount,
+            remainingAmount: amount,
+            interestRate: rate,
+            duration: 30 days, // Default duration for market orders
+            maxLTV: DEFAULT_LTV,
+            collateralToken: asset, // Use asset as collateral token reference
+            collateralAmount: 0,
+            timestamp: block.timestamp,
+            expiry: block.timestamp + 1 hours // Short expiry for temp orders
+        });
+    }
+    
+    /**
+     * @dev Create temporary borrow order for market execution
+     */
+    function _createTempBorrowOrder(
+        address user,
+        address asset,
+        uint256 amount,
+        uint256 rate,
+        address collateralToken,
+        uint256 collateralAmount
+    ) internal returns (uint256 orderId) {
+        orderId = _nextOrderId++;
+        
+        orders[orderId] = Order({
+            orderId: orderId,
+            user: user,
+            orderType: OrderType.BORROW,
+            status: OrderStatus.PENDING,
+            principalAmount: amount,
+            remainingAmount: amount,
+            interestRate: rate,
+            duration: 30 days, // Default duration for market orders
+            maxLTV: DEFAULT_LTV,
+            collateralToken: collateralToken,
+            collateralAmount: collateralAmount,
+            timestamp: block.timestamp,
+            expiry: block.timestamp + 1 hours // Short expiry for temp orders
+        });
+    }
+    
+    /**
+     * @dev Internal function to try matching an order instantly
+     * @return matchedAmount Total amount that was matched
+     */
+    function _tryMatchOrderInstant(uint256 orderId, address asset) internal returns (uint256 matchedAmount) {
         Order storage order = orders[orderId];
+        uint256 initialAmount = order.remainingAmount;
         
         if (order.orderType == OrderType.LEND) {
-            _matchLendOrder(orderId, asset);
+            _matchLendOrderInstant(orderId, asset);
         } else {
-            _matchBorrowOrder(orderId, asset);
+            _matchBorrowOrderInstant(orderId, asset);
         }
+        
+        matchedAmount = initialAmount - order.remainingAmount;
+        _updateOrderBookDepth(asset);
+    }
+    
+    /**
+     * @dev Update order book depth events
+     */
+    function _updateOrderBookDepth(address asset) internal {
+        (uint256 totalLendVolume, uint256 totalBorrowVolume) = _calculateOrderBookVolume(asset);
+        emit OrderBookDepthUpdated(asset, totalLendVolume, totalBorrowVolume);
+    }
+    
+    /**
+     * @dev Calculate total volume in order book
+     */
+    function _calculateOrderBookVolume(address asset) internal view returns (uint256 lendVolume, uint256 borrowVolume) {
+        // Calculate total lending volume
+        uint256[] memory lendRates = activeLendRates[asset];
+        for (uint256 i = 0; i < lendRates.length; i++) {
+            uint256[] memory orderIds = lendOrdersByRate[asset][lendRates[i]];
+            for (uint256 j = 0; j < orderIds.length; j++) {
+                Order storage order = orders[orderIds[j]];
+                if (order.status == OrderStatus.PENDING || order.status == OrderStatus.PARTIALLY_FILLED) {
+                    lendVolume += order.remainingAmount;
+                }
+            }
+        }
+        
+        // Calculate total borrowing volume
+        uint256[] memory borrowRates = activeBorrowRates[asset];
+        for (uint256 i = 0; i < borrowRates.length; i++) {
+            uint256[] memory orderIds = borrowOrdersByRate[asset][borrowRates[i]];
+            for (uint256 j = 0; j < orderIds.length; j++) {
+                Order storage order = orders[orderIds[j]];
+                if (order.status == OrderStatus.PENDING || order.status == OrderStatus.PARTIALLY_FILLED) {
+                    borrowVolume += order.remainingAmount;
+                }
+            }
+        }
+    }
+    
+    /**
+     * @dev Match a lending order with borrowing orders (instant execution)
+     */
+    function _matchLendOrderInstant(uint256 lendOrderId, address asset) internal {
+        _matchLendOrder(lendOrderId, asset);
+    }
+    
+    /**
+     * @dev Match a borrowing order with lending orders (instant execution)
+     */
+    function _matchBorrowOrderInstant(uint256 borrowOrderId, address asset) internal {
+        _matchBorrowOrder(borrowOrderId, asset);
     }
     
     /**
@@ -458,7 +724,9 @@ contract LegosCLOB is ILegosCore, Ownable, ReentrancyGuard {
         // This is a simplified implementation
         // In production, you'd want to properly remove from the order book arrays
         // and clean up empty rate levels
+        // TODO: Implement proper order removal from rate arrays
     }
+    
     
     /**
      * @dev Validation functions

@@ -11,6 +11,8 @@
     "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
     "deploy:mainnet": "hardhat run scripts/deploy.js --network mainnet",
     "deploy:rise": "hardhat run scripts/deploy-rise.js --network riseTestnet",
+    "test:clob": "hardhat run scripts/test-clob.js --network riseTestnet",
+    "test:simple": "hardhat run scripts/simple-clob-test.js --network riseTestnet",
     "node": "hardhat node",
     "verify": "hardhat verify",
     "clean": "hardhat clean",

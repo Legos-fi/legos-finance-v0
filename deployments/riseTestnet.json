@@ -8,7 +8,9 @@
     "timelock": "0xA2a5A7286eCc5B590A5c5869D9af24CaF23F364F",
     "governance": "0x841e33B460fc362327e3392D7F5772cd63BFB905",
     "clob": "0x23C7dd9b96F3d5007c014853d91CF766D07Ced95",
-    "riskManager": "0xB61efEfB4d34bcfB0B07403AEf9d3af059cb7582"
+    "riskManager": "0xB61efEfB4d34bcfB0B07403AEf9d3af059cb7582",
+    "usdc": "0xe82686086eE44F6f6900f8FCb793D0843Cb1c979",
+    "weth": "0x972a0f23f7668Ca03cc5a8C3a174738fEdebc102"
   },
   "blockNumber": 17764816
 }

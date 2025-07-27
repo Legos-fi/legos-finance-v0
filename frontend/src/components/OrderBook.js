@@ -5,6 +5,7 @@ import { parseUnits, formatUnits, formatCurrency, formatAPY } from '../config/co
 
 const OrderBook = ({ contracts, account, onOrderPlaced }) => {
     const [activeOrderType, setActiveOrderType] = useState('lend');
+    const [orderMode, setOrderMode] = useState('limit'); // 'limit' or 'market'
     const [orderForm, setOrderForm] = useState({
         asset: 'usdc',
         amount: '',
@@ -12,7 +13,8 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
         duration: '30',
         collateralAsset: 'weth',
         collateralAmount: '',
-        maxLTV: '75'
+        maxLTV: '75',
+        maxSlippage: '1' // For market orders
     });
 
     const [orders, setOrders] = useState([]);
@@ -85,8 +87,13 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
     };
 
     const handlePlaceOrder = async () => {
-        if (!orderForm.amount || !orderForm.interestRate) {
-            toast.error('Please fill in all required fields');
+        if (!orderForm.amount) {
+            toast.error('Please enter an amount');
+            return;
+        }
+
+        if (orderMode === 'limit' && !orderForm.interestRate) {
+            toast.error('Please enter an interest rate for limit orders');
             return;
         }
 
@@ -97,51 +104,13 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
             const assetAddress = await asset.getAddress();
             const decimals = orderForm.asset === 'usdc' ? 6 : 18;
             const amount = parseUnits(orderForm.amount, decimals);
-            const interestRate = parseInt(orderForm.interestRate * 100); // Convert to basis points
-            const duration = parseInt(orderForm.duration) * 24 * 60 * 60; // Convert days to seconds
-            const expiry = Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60); // 7 days from now
 
-            if (activeOrderType === 'lend') {
-                // Approve tokens for lending
-                await asset.approve(await contracts.clob.getAddress(), amount);
-
-                const collateralAsset = orderForm.collateralAsset === 'usdc' ? contracts.usdc : contracts.weth;
-                const collateralAddress = await collateralAsset.getAddress();
-                const maxLTV = parseInt(orderForm.maxLTV) * 100; // Convert to basis points
-
-                const tx = await contracts.clob.placeLendOrder(
-                    assetAddress,
-                    amount,
-                    interestRate,
-                    duration,
-                    maxLTV,
-                    collateralAddress,
-                    expiry
-                );
-
-                await tx.wait();
-                toast.success('Lending order placed successfully!');
+            if (orderMode === 'market') {
+                // Execute market order for instant execution
+                await handleMarketOrder(asset, assetAddress, amount, decimals);
             } else {
-                // For borrowing orders, need collateral
-                const collateralAsset = orderForm.collateralAsset === 'usdc' ? contracts.usdc : contracts.weth;
-                const collateralDecimals = orderForm.collateralAsset === 'usdc' ? 6 : 18;
-                const collateralAmount = parseUnits(orderForm.collateralAmount, collateralDecimals);
-
-                // Approve collateral
-                await collateralAsset.approve(await contracts.clob.getAddress(), collateralAmount);
-
-                const tx = await contracts.clob.placeBorrowOrder(
-                    assetAddress,
-                    amount,
-                    interestRate,
-                    duration,
-                    await collateralAsset.getAddress(),
-                    collateralAmount,
-                    expiry
-                );
-
-                await tx.wait();
-                toast.success('Borrowing order placed successfully!');
+                // Execute limit order
+                await handleLimitOrder(asset, assetAddress, amount, decimals);
             }
 
             // Reset form and reload data
@@ -152,7 +121,8 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
                 duration: '30',
                 collateralAsset: 'weth',
                 collateralAmount: '',
-                maxLTV: '75'
+                maxLTV: '75',
+                maxSlippage: '1'
             });
 
             loadUserOrders();
@@ -164,6 +134,118 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
             toast.error(error.message || 'Failed to place order');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleMarketOrder = async (asset, assetAddress, amount, decimals) => {
+        const maxSlippage = parseInt(orderForm.maxSlippage * 100); // Convert to basis points
+
+        if (activeOrderType === 'lend') {
+            // Approve tokens for lending
+            await asset.approve(await contracts.clob.getAddress(), amount);
+
+            const tx = await contracts.clob.executeMarketOrder(
+                assetAddress,
+                amount,
+                true, // isLend = true
+                maxSlippage,
+                assetAddress, // collateralToken (not used for lend orders)
+                0 // collateralAmount (not used for lend orders)
+            );
+
+            const receipt = await tx.wait();
+            
+            // Extract execution details from events
+            const executionEvent = receipt.logs.find(log => 
+                log.topics[0] === contracts.clob.interface.getEventTopic('InstantExecution')
+            );
+            
+            if (executionEvent) {
+                const decoded = contracts.clob.interface.decodeEventLog('InstantExecution', executionEvent.data, executionEvent.topics);
+                toast.success(`Market lend order executed! Amount: ${formatUnits(decoded.amount, decimals)} at ${formatAPY(decoded.rate)}% APY`);
+            } else {
+                toast.success('Market lend order executed successfully!');
+            }
+        } else {
+            // For market borrowing orders
+            const collateralAsset = orderForm.collateralAsset === 'usdc' ? contracts.usdc : contracts.weth;
+            const collateralDecimals = orderForm.collateralAsset === 'usdc' ? 6 : 18;
+            const collateralAmount = parseUnits(orderForm.collateralAmount, collateralDecimals);
+
+            // Approve collateral
+            await collateralAsset.approve(await contracts.clob.getAddress(), collateralAmount);
+
+            const tx = await contracts.clob.executeMarketOrder(
+                assetAddress,
+                amount,
+                false, // isLend = false
+                maxSlippage,
+                await collateralAsset.getAddress(),
+                collateralAmount
+            );
+
+            const receipt = await tx.wait();
+            
+            // Extract execution details from events
+            const executionEvent = receipt.logs.find(log => 
+                log.topics[0] === contracts.clob.interface.getEventTopic('InstantExecution')
+            );
+            
+            if (executionEvent) {
+                const decoded = contracts.clob.interface.decodeEventLog('InstantExecution', executionEvent.data, executionEvent.topics);
+                toast.success(`Market borrow order executed! Amount: ${formatUnits(decoded.amount, decimals)} at ${formatAPY(decoded.rate)}% APY`);
+            } else {
+                toast.success('Market borrow order executed successfully!');
+            }
+        }
+    };
+
+    const handleLimitOrder = async (asset, assetAddress, amount, decimals) => {
+        const interestRate = parseInt(orderForm.interestRate * 100); // Convert to basis points
+        const duration = parseInt(orderForm.duration) * 24 * 60 * 60; // Convert days to seconds
+        const expiry = Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60); // 7 days from now
+
+        if (activeOrderType === 'lend') {
+            // Approve tokens for lending
+            await asset.approve(await contracts.clob.getAddress(), amount);
+
+            const collateralAsset = orderForm.collateralAsset === 'usdc' ? contracts.usdc : contracts.weth;
+            const collateralAddress = await collateralAsset.getAddress();
+            const maxLTV = parseInt(orderForm.maxLTV) * 100; // Convert to basis points
+
+            const tx = await contracts.clob.placeLendOrder(
+                assetAddress,
+                amount,
+                interestRate,
+                duration,
+                maxLTV,
+                collateralAddress,
+                expiry
+            );
+
+            await tx.wait();
+            toast.success('Lending limit order placed successfully!');
+        } else {
+            // For borrowing orders, need collateral
+            const collateralAsset = orderForm.collateralAsset === 'usdc' ? contracts.usdc : contracts.weth;
+            const collateralDecimals = orderForm.collateralAsset === 'usdc' ? 6 : 18;
+            const collateralAmount = parseUnits(orderForm.collateralAmount, collateralDecimals);
+
+            // Approve collateral
+            await collateralAsset.approve(await contracts.clob.getAddress(), collateralAmount);
+
+            const tx = await contracts.clob.placeBorrowOrder(
+                assetAddress,
+                amount,
+                interestRate,
+                duration,
+                await collateralAsset.getAddress(),
+                collateralAmount,
+                expiry
+            );
+
+            await tx.wait();
+            toast.success('Borrowing limit order placed successfully!');
         }
     };
 
@@ -215,25 +297,50 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-gray-900">Order Book</h2>
-                <div className="flex space-x-2">
-                    <button
-                        onClick={() => setActiveOrderType('lend')}
-                        className={`px-4 py-2 rounded-lg ${activeOrderType === 'lend'
-                                ? 'bg-green-600 text-white'
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                    >
-                        Lend
-                    </button>
-                    <button
-                        onClick={() => setActiveOrderType('borrow')}
-                        className={`px-4 py-2 rounded-lg ${activeOrderType === 'borrow'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                    >
-                        Borrow
-                    </button>
+                <div className="flex space-x-4">
+                    {/* Order Type Selection */}
+                    <div className="flex space-x-2">
+                        <button
+                            onClick={() => setActiveOrderType('lend')}
+                            className={`px-4 py-2 rounded-lg ${activeOrderType === 'lend'
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                        >
+                            Lend
+                        </button>
+                        <button
+                            onClick={() => setActiveOrderType('borrow')}
+                            className={`px-4 py-2 rounded-lg ${activeOrderType === 'borrow'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                        >
+                            Borrow
+                        </button>
+                    </div>
+                    
+                    {/* Order Mode Selection */}
+                    <div className="flex space-x-2">
+                        <button
+                            onClick={() => setOrderMode('limit')}
+                            className={`px-3 py-1 rounded text-sm ${orderMode === 'limit'
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                        >
+                            Limit
+                        </button>
+                        <button
+                            onClick={() => setOrderMode('market')}
+                            className={`px-3 py-1 rounded text-sm ${orderMode === 'market'
+                                    ? 'bg-orange-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                        >
+                            Market
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -275,20 +382,43 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
                             />
                         </div>
 
-                        {/* Interest Rate */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Interest Rate (APY %)
-                            </label>
-                            <input
-                                type="number"
-                                value={orderForm.interestRate}
-                                onChange={(e) => setOrderForm({ ...orderForm, interestRate: e.target.value })}
-                                className="input-field w-full"
-                                placeholder="5.00"
-                                step="0.01"
-                            />
-                        </div>
+                        {/* Interest Rate - Only for limit orders */}
+                        {orderMode === 'limit' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Interest Rate (APY %)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={orderForm.interestRate}
+                                    onChange={(e) => setOrderForm({ ...orderForm, interestRate: e.target.value })}
+                                    className="input-field w-full"
+                                    placeholder="5.00"
+                                    step="0.01"
+                                />
+                            </div>
+                        )}
+
+                        {/* Max Slippage - Only for market orders */}
+                        {orderMode === 'market' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Max Slippage (%)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={orderForm.maxSlippage}
+                                    onChange={(e) => setOrderForm({ ...orderForm, maxSlippage: e.target.value })}
+                                    className="input-field w-full"
+                                    placeholder="1.0"
+                                    step="0.1"
+                                    max="10"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Market orders execute instantly at best available rates
+                                </p>
+                            </div>
+                        )}
 
                         {/* Duration */}
                         <div>
@@ -361,14 +491,19 @@ const OrderBook = ({ contracts, account, onOrderPlaced }) => {
                         <button
                             onClick={handlePlaceOrder}
                             disabled={loading}
-                            className="btn-primary w-full"
+                            className={`w-full ${orderMode === 'market' 
+                                ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                                : 'btn-primary'
+                            }`}
                         >
                             {loading ? (
-                                <span className="loading-dots">Placing Order</span>
+                                <span className="loading-dots">
+                                    {orderMode === 'market' ? 'Executing' : 'Placing'} Order
+                                </span>
                             ) : (
                                 <>
                                     <PlusCircle className="inline h-4 w-4 mr-2" />
-                                    Place {activeOrderType === 'lend' ? 'Lending' : 'Borrowing'} Order
+                                    {orderMode === 'market' ? 'Execute Market' : 'Place Limit'} {activeOrderType === 'lend' ? 'Lend' : 'Borrow'}
                                 </>
                             )}
                         </button>
